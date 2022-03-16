@@ -1,0 +1,167 @@
+---
+title: "É possível dar a volta ao mundo por R$ 0,20 por km?"
+subtitle: "Uma análise das variaveis envolvendo passagens aereas de longa distância ao redor do mundo e aplicação de técnicas de visualização de dados mais adequadas"
+author: "Fabiano Silva (drhtcl@gmail.com)"
+output:
+pdf_document: default
+html_document: default
+collapsed: true
+
+---
+ \renewcommand*\contentsname{Sumário}
+ \tableofcontents
+
+```{css include=FALSE}
+.cor {
+background-color: #cdeced;
+}
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introdução
+
+Durante o ano de 2018 durante a preparação de uma viagem de volta ao mundo, me deparei com um aspecto até então desconhecido por mim sobre passagens aéreas. Que o preço por km voado diminui conforme a distancia. Apesar de facilmente compreensilvel sobre o ponto de vista de custo para as empresas. A variação me surpeendeu, e resolvi investigar mais o assunto.
+
+Durante minha preparação, notei que o o valor por km voado em voos de longa distancia (maiores que 5000Km) sempre se aproximavam de R$0,20 (USD 0,06 em valores da epoca). 
+
+Seria possivel calcular o valor mínimo de uma passagem aérea? 
+
+Até onde o valor das passagens pode ir, qual a chance real de comprar uma nos 5% mais barato?
+
+Seria essa, uma maneira de saber o que seria uma passagem barata, de forma totalmente independente?
+
+Levei prejuízo ou me dei bem? 
+
+## Sobre os dados e tratamento:
+
+Os dados utilizados foram obtidos do Escritorio de estatisticas de Transporte do Departamento de Transporte DOT(EUA), os dados são referentes a 2018. Este foi o maior banco de dados encontrado e que possuia valores de passagens. 
+As empresas foram: (WN) Southwest Airlines, (DL) Delta Air Lines, (AA) American Airlines, (UA) United Air Lines, (B6, JetBlue Airways, (AS) Alaska Airlines, (NK) Spirit Air Lines, (G4) Allegiant Air, (F9) Frontier Airlines, (HA) Hawaiian Airlines, (SY) Sun Country Airlines, (VX) Virgin America.
+
+Todo o processamento foi realizado em R e RStudio com uso de Dplyr e ggplot
+
+Foi criado um dataframe a partir do arquivo original de aproximadamente 9 Milhões de linhas e 700 Megabytes de tamanho:
+
+```{r message=FALSE, warning=FALSE}
+library(readr)
+library(tidyverse)
+Flights <- read_csv("/mnt/DADOS/Data Science/Viagens/Cleaned_2018_Flights.csv")
+```
+
+## Calculo do valor por Km voado:
+
+Vamos calcular o valor por km voado, criando a coluna "PricePerKm" e sumarizar os dados com distancias (Miles), valores por km voado (PricePerKm) e preços totais(PricePerTicket):
+
+```{r message=FALSE, warning=FALSE,collapse=TRUE, class.source="cor"}
+Flights <- Flights %>% mutate(PricePerKm= PricePerTicket/(Miles*1.8))
+summary(Flights$PricePerKm)
+summary(Flights$Miles)
+summary(Flights$PricePerTicket)
+
+```
+
+A media de todos os 9 milhões de registros disponíveis é de 0,14USD/km, uma distancia de 1202 Milhas(2200km) e um preço de 232USD por ticket.
+
+Visualizando a distribuição dos dados plotando Distancia x valor por Km, Isso vai responder se os valores diminuiem conforme a distancia voada, ou seja, voos mais longos são proporcionalmente mais baratos?
+
+```{r}
+g <- ggplot(Flights,aes(Miles,PricePerKm)) +geom_point(aes(color=Origin,alpha=0.01),show.legend = FALSE)
+g
+```
+
+Inconclusivo,podemos ver que existem muitos valores extremos, fazendo a compressão dos eixos utilizando a escala logarítimica (base 10):
+
+```{r, collapse=TRUE}
+g +scale_y_continuous(trans="log10") + scale_x_continuous(trans="log10")
+```
+
+Um resultado bem interessante e com limites de preços bem claros e alta correlação entre valor por Km e distancia voada.
+
+## Onde o valor por km é mais barato
+
+Analisando agora (com histogramas de frequencia) a distribuição dos preços conforme a distancia voada(eixo X é Valor por Km voado e o Y, a frequencia de voos nesse valor), primeiro abaixo de 500 milhas (900 km, aproximadamente 1 hora de voo) e separando cada companhia aérea por cor:
+
+```{r warning=FALSE, collapse=TRUE}
+ggplot(filter(Flights,Flights$Miles <=500),aes(PricePerKm))+geom_histogram(aes(fill=AirlineCompany)) +scale_x_continuous(trans="log10")+geom_vline(xintercept=0.06, linetype="solid", color = "blue") 
+```
+
+A linha azul representa o valor prático/experimental de 0,06 USD/km, neste caso, voos curto possuem valores bem mais caros.
+Mesmo com a transformação logarítimica os dados se mostram bastante assimétricos.
+
+Agora, quanto a voos longos, acima de 4000 milhas (7500km, aproximadamente 8 horas de voo):
+
+```{r, collapse=TRUE}
+ ggplot(filter(Flights, Miles >= 4000),aes(PricePerKm,fill=AirlineCompany)) +geom_histogram()+scale_x_continuous(trans="log10")+geom_vline(xintercept=0.06, linetype="solid", color = "blue")  
+```
+
+Praticamente em 0,06USD/Km! Ou seja, minha experiencia foi bastante mediana em termos de conseguir uma passagem barata. A distribuição e praticamente dominada por voos da America Airlines
+Mas vamos ver um sumário de todos so voos acima de 4000 Milhas e ver como esses valores se distribuem:
+
+```{r, collapse=TRUE, class.source="cor"}
+summary(subset(Flights$PricePerKm,Flights$Miles >= 4000))
+```
+Sim, fiquei bem em cima da média. Apesar de 50% das passagens serem mais baratas, 25% delas (2º Quartil) começam em 0,048USD/Km o que é só 20% mais barato do que paguei, o que pode ser explicado por outra variavel como ausência de franquia de bagagem (Que foi adquirida no meu caso)
+
+Investigando agora os valores conforme as empresas aéreas usando boxplots:
+
+```{r}
+Flights %>% filter( Miles >= 4000) %>% ggplot(aes(PricePerKm, AirlineCompany)) +geom_boxplot(aes(fill=AirlineCompany))+scale_x_continuous(trans="log10") +geom_vline(xintercept=0.06, linetype="solid", color = "blue")  
+```
+
+Cada linha de boxplot representa uma empresa aérea, a caixa central engloba 50% dos valores por km voado em cada empresa (2º e 3º Quartil, 50% e 75%). A linha central dentro de cada caixa é a mediana. As linhas horizontais compreendem o primeiro e ultimo quartil(25% e 100%). Os pontos fora dessas ultimas são considerados outliers.
+
+Mesmo separando as empresas aéreas é possivel notar que as medianas se aproximam muito e que apenas a Virgin America(low cost) e American Airlines (a maior do mundo em volume de passageiros) não apresentam outliers na faixa inferior de preço.
+
+## Probabilidade de acertar "na mosca"
+
+
+
+```{r}
+longos <- filter(Flights,Flights$Miles >= 4000)
+longos2 <- longos[sample(5000),]
+shapiro.test(longos2$PricePerKm)
+qqnorm(longos2$PricePerKm, pch = 1, frame = FALSE,  main = "Preço por km")
+qqline(longos2$PricePerKm, col = "steelblue", lwd = 2)
+ggplot(longos2,aes(PricePerKm,fill=AirlineCompany)) +geom_histogram()+scale_x_continuous(trans="log10")+geom_vline(xintercept=0.06, linetype="solid", color = "blue")  
+table(longos2$AirlineCompany)
+```
+
+
+
+
+
+## O Avião é o mais eficiente?
+
+![Energia por meio de transporte](/mnt/DADOS/Data Science/Viagens/average-per-passenger.jpeg)
+Fonte: Oak Ridge National Laboratory, Transportation Energy Data Book 38. 2020,Table 2.13.
+British thermal unit (BTU) to GGE conversion taken from Appendix A3 of the U.S. Energy Information Administration (EIA) Monthly Energy Review, February 2020.
+
+
+Preço do combustivel:
+
+
+
+```{r}
+45.5/160*0.04
+```
+
+
+
+
+## Conclusão
+
+
+
+
+## Fontes:
+
+https://www.kaggle.com/zernach/2018-airplane-flights
+
+The Bureau of Transportation Statistics. 2018.
+
+https://www.thestar.com.my/lifestyle/people/2014/09/20/sixyear-world-walk
+
+https://www.novo-monde.com/en/budget-trip-around-the-world/
+
